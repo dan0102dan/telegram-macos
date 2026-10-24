@@ -1,0 +1,96 @@
+name: Telegram macOS PR build
+
+on:
+  pull_request:
+    branches: [master]
+    types: [opened, reopened, synchronize, ready_for_review]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: telegram-build-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: macos-26-intel
+    timeout-minutes: 360
+    env:
+      DEVELOPER_DIR: /Applications/Xcode.app/Contents/Developer
+      CMAKE_POLICY_VERSION_MINIMUM: '3.5'
+      HOMEBREW_NO_AUTO_UPDATE: '1'
+
+    steps:
+      - name: Configure HTTPS for nested submodules
+        run: |
+          git config --global url."https://github.com/".insteadOf "git@github.com:"
+          git config --global url."https://gitlab.com/".insteadOf "git@gitlab.com:"
+
+      - name: Checkout pull request with submodules
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          submodules: recursive
+          persist-credentials: false
+
+      - name: Check build environment
+        run: |
+          xcodebuild -version
+          rustc --version
+          cargo --version
+          df -h .
+          git submodule status --recursive
+
+      - name: Install native build tools
+        run: |
+          brew install cmake ninja meson nasm yasm zlib autoconf libtool automake pkg-config
+
+      - name: Apply upstream's Abseil compatibility fix
+        run: |
+          source_file=submodules/tg_owt/src/third_party/abseil-cpp/absl/base/attributes.h
+          if [ -f "$source_file" ]; then
+            sed -i '' \
+              -e 's|^#define ABSL_ATTRIBUTE_LIFETIME_BOUND \[\[clang::lifetimebound\]\]|#define ABSL_ATTRIBUTE_LIFETIME_BOUND|' \
+              -e 's|^#define ABSL_ATTRIBUTE_LIFETIME_BOUND __attribute__((lifetimebound))|#define ABSL_ATTRIBUTE_LIFETIME_BOUND|' \
+              "$source_file"
+          fi
+
+      - name: Prepare generated sources and native frameworks
+        run: |
+          if ! bash scripts/configure_frameworks.sh > "$RUNNER_TEMP/frameworks.log" 2>&1; then
+            tail -n 200 "$RUNNER_TEMP/frameworks.log"
+            exit 1
+          fi
+          df -h .
+
+      - name: Compile Telegram (unsigned, Intel architecture)
+        run: |
+          set -o pipefail
+          xcodebuild build \
+            -workspace Telegram-Mac.xcworkspace \
+            -scheme Telegram \
+            -configuration Debug \
+            -destination 'generic/platform=macOS' \
+            -derivedDataPath "$RUNNER_TEMP/TelegramDerivedData" \
+            -jobs 2 \
+            COMPILER_INDEX_STORE_ENABLE=NO \
+            ONLY_ACTIVE_ARCH=YES \
+            ARCHS=x86_64 \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY='' \
+            DEVELOPMENT_TEAM='' \
+            | tee "$RUNNER_TEMP/xcodebuild.log"
+
+      - name: Upload failure logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: telegram-macos-pr-build-logs
+          path: |
+            ${{ runner.temp }}/frameworks.log
+            ${{ runner.temp }}/xcodebuild.log
+          if-no-files-found: ignore
+          retention-days: 3
