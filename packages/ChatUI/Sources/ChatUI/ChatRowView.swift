@@ -1432,11 +1432,6 @@ public class ChatRowView: TableRowView, Notifable, MultipleSelectable, ChatTextS
         
         if let peer = item.peer {
             avatar.setPeer(item: item, peer: peer, storyStats: item.entry.additionalData.authorStoryStats, message: item.message)
-            if peer.id.id._internalGetInt64Value() != 0 {
-                avatar.contextMenu = photoContextMenu(item, peer: peer, setOpenProgress: { [weak avatar] signal in
-                    avatar?.setOpenProgress(signal)
-                })
-            }
         }
         return avatar
     }

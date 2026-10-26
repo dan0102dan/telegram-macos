@@ -190,6 +190,11 @@ final class ChatFloatingAvatarNode {
         }, for: .Click)
         control.toolTip = item.nameHide
         control.accessibilityLabel = item.nameHide.flatMap { $0.isEmpty ? nil : $0 }
+        if peer.id.id._internalGetInt64Value() != 0 {
+            control.contextMenu = ChatRowView.photoContextMenu(item, peer: peer, setOpenProgress: { _ in })
+        } else {
+            control.contextMenu = nil
+        }
     }
 }
 
@@ -206,9 +211,6 @@ final class ChatFloatingAvatar {
         if ChatFloatingAvatar.prefersNode(item), let peer = item.peer {
             let node = ChatFloatingAvatarNode()
             node.setPeer(item: item, peer: peer, message: item.message)
-            if peer.id.id._internalGetInt64Value() != 0 {
-                node.control.contextMenu = ChatRowView.photoContextMenu(item, peer: peer, setOpenProgress: { _ in })
-            }
             self.node = node
             self.view = nil
         } else {

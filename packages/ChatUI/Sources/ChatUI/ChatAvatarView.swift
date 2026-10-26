@@ -41,7 +41,15 @@ public final class ChatAvatarView : Control {
             self.storyComponent = nil
         }
         self.peer = peer
-        
+
+        if peer.id.id._internalGetInt64Value() != 0 {
+            contextMenu = ChatRowView.photoContextMenu(item, peer: peer, setOpenProgress: { [weak self] signal in
+                self?.setOpenProgress(signal)
+            })
+        } else {
+            contextMenu = nil
+        }
+
         self.avatar.setPeer(account: context.account, peer: peer, message: message, size: size, disableForum: disableForum)
         if peer.isPremium || force, peer.hasVideo, !TelegramUtilsHooks.shared.isLite(.animations) {
             let signal = peerPhotos(context: context, peerId: peer.id) |> deliverOnMainQueue
